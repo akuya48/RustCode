@@ -1,3 +1,6 @@
+//#[allow(unused_variables)]
 fn main() {
-    println!("Hello, world!");
+    let _x = 1; 
 }
+
+// compiler warning: unused variable: `x`

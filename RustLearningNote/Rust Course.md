@@ -94,3 +94,297 @@ cargo check
     Finished dev [unoptimized + debuginfo] target(s) in 0.06s
 ```
 
+## Cargo.toml和Cargo.lock
+
+cargo的活动都基于这两个文件
+
+- Cargo.html是cargo特有的**项目数据描述文件**，存储了项目的所有元配置信息
+
+  ```toml
+  [package]
+  name = "world_hello"
+  version = "0.1.0"
+  edition = "2021"
+  
+  # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+  
+  [dependencies]
+  ```
+
+  package中记录了项目的描述信息。
+
+  这里的`name`字段定义了项目名称，`version`定义了当前版本，新项目默认的是`0.1.0`，`edition`字段定义了使用的Rust大版本。
+
+  **主要通过各种依赖段落来描述该项目的各种依赖项**
+
+  - 基于Rust官方仓库`crates.io`，通过版本说明来描述
+  - 基于项目源代码的git仓库地址，通过URL来描述
+  - 基于本地项目的绝对路径或者相对路径，通过类Unix模式的路径来描述
+
+  三种形式的具体写法如下：
+
+  ```toml
+  [dependencies]
+  rand = "0.3"
+  hammer = { version = "0.5.0"}
+  color = { git = "https://github.com/bjz/color-rs" }
+  geometry = { path = "crates/geometry" }
+  ```
+
+- Cargo.lock是cargo根据同一项目的toml文件生成的**项目依赖详细清单**，一般不需要修改
+
+## Rust语言初印象
+
+```rust
+fn greet_world() {
+    let southern_germany = "Grüß Gott!";
+    let chinese = "世界，你好";
+    let english = "World, hello";
+    let regions = [southern_germany, chinese, english];
+    for region in regions.iter() {
+        println!("{}", &region);
+    }
+}
+fn main() {
+    greet_world();
+}
+```
+
+Rust原生支持`UTF-8`编码的字符串。println后面的`!`，为Rust中的`宏`操作符。
+
+对于`println`来说，没有使用`%s`,`%d`，而是使用了`{}`，**因为RUST在底层会自动识别输出数据的类型**
+
+**和其它语言不同，Rust的集合类型不能直接进行循环，需要变成迭代器(.iter())，才能用于迭代循环（在2021 Edition之后，可以直接使用for region in regions，Rust会隐式转换为regions.iter()）**
+
+```rust
+fn main(){
+    let penguin_data = "\
+    common name,length (cm)
+    Little penguin,33
+    Yellow-eyed penguin,65
+    Fiordland penguin,60
+    Invalid,data
+    ";
+    let records = penguin_data.lines();
+    for (i,record) in records.enumerate(){
+        if i==0 || record.trim().len() == 0{
+            continue;
+        }
+        //声明一个fields变量，类型是Vec，Vec是vector的缩写，可伸缩的集合类型，动态数组
+        //vec<_>代表元素类型由编译器自行判断
+        let fields: Vec<_> = record.split(',').map(|field| field.trim()).collect();
+        if cfg!(debug_assertions){
+            // 输出到标准错误输出
+            eprintln!("debug：{:?} -> {:?}",record,fields);
+        }
+        let name = fields[0];
+        /*
+        1.尝试把fields[1]的值转换为f32类型的浮点数，如果成功，则把f32值赋给length变量
+        2.if let是一个匹配表达式，用于从=右边的结果，匹配出length的值
+            1.当=右边的表达式执行成功，则会返回一个Ok(f32)的类型，如果失败，则会返回一个Err(e)类型
+            2.同时 if let 还会做一次解构匹配，通过 Ok(length)去匹配右边的Ok(f32)，最终把相应的f32值赋给length
+
+        3.也可以使用if let Err(length) = fields[1].parse::<f32>()，把错误匹配的结果给length
+        
+         */
+        if let Ok(length) = fields[1].parse::<f32>(){
+            //输出到标准输出
+            println!("{},{}cm",name,length);
+        }
+    }
+}
+```
+
+上面代码中，值得注意的`Rust`特性：
+
+- Rust没有继承，因此Rust不是传统意义上的面向对象语言，但是它却有方法的使用，比如`record.trim()`和`record.split(',')`
+- 高阶函数变成：函数作为参数也能作为返回值，例如`.map(|field| field.trim())`，这里的`map`方法使用闭包函数作为参数(也叫做匿名函数，lambda函数)
+- 类型标注：通过::\<f32\>的使用，告诉编译器length是一个f32类型的浮点数。
+- 条件编译：if cfg!(debug_assertions)，说明后面的内容只在debug模式下生效
+- 隐式返回：Rust提供了`return`关键字用于函数返回，但是在很多时候，可以省略它，因为Rust是基于表达式的语言。
+
+# Rust基础入门
+
+```rust
+//main函数无返回值
+fn main(){
+    /*
+    使用let声明变量，进行绑定,a是不可变的（如果要更改，必须加上mut修饰）
+    编译器会根据a的值自动推断a的类型：i32 (int32位)
+     */
+    let a = 10;
+    //可以为b指定类型为i32
+    let b: i32 = 10;
+    //mut是mutable的缩写，也可以在数字后加上i32指定类型
+    let mut c = 30i32;
+    //可以使用下划线增加可读性。
+    let d = 30_i32;
+    // let b = 10i32;
+    // println!("{}",a);
+    let e = add(add(a,b),add(c,d));
+    println!("{}",e);
+}
+fn add(i:i32,j:i32) -> i32{
+    i + j//不能增加;，这会改变语法导致函数返回()
+}
+```
+
+## 变量绑定与解构
+
+type-level使用驼峰命名法，value-level使用蛇形命名法。[Rust命名规则](https://course.rs/practice/naming.html)
+
+### 变量绑定
+
+```rust
+let a = "hello world";
+```
+
+这个过程称之为：**变量绑定**，而非以往的赋值，这涉及到Rust的核心原则：**所有权。**
+
+**所有权：**任何内存对象都是有主人的，一般情况下完全属于它的主人，绑定就是把这个对象绑定给一个变量，让这个变量成为它的主人（**该对象之前的主人就会丧失对这个对象的所有权**）
+
+### 变量可变性
+
+Rust的变量在默认情况下是**不可变的**，使得代码更安全，性能更好。可以使用`mut`关键字让变量变为**可变的（只能改变其值，而不能改变其值的类型）。**避免无法预期的错误发生。
+
+### 使用下划线开头忽略未使用的变量
+
+创建变量后，如果不使用，会出现Warning，可以使用下划线作为变量名的开头，Rust则不会警告。
+
+也可以使用：`#[allow(unused_variables)]`
+
+### 变量解构
+
+ `let`表达式不仅仅可以用于变量的绑定，还能进行复杂变量的解构：从一个相对复杂的变量中，匹配出该变量的一部分内容。
+
+变量解构（Destructuring）是一种提取结构化数据（如元组、数组、结构体等）中的数据并将其分配给独立变量的技术。
+
+```rust
+fn main(){
+    let (a,mut b): (bool,bool) = (true,false);
+    //a = true,不可变，b = false，可变。这里使用的是元组解构的方法
+    println!("a : {},b : {}",a,b);
+    b = true;
+    assert_eq!(a,b);
+}
+```
+
+在Rust中，变量解构可以通过模式匹配来实现。模式匹配是一种匹配结构化数据的方式，它可以将一个给定的值与一个或多个模式进行比较，并根据匹配结果执行相应的操作。
+
+#### 解构式赋值
+
+可以在赋值语句的左式中使用元组、切片或者结构体模式。
+
+```rust
+struct Struct{
+    e: i32
+}
+fn main(){
+    let (a,b,c,d,e);
+    (a,b) = (1,2);
+    //_ 代表匹配一个值，但是不用，类似与python
+    [c,..,d,_] = [1,2,3,4,5];
+    //c = 1,中间应该应该代表省略，d从倒数第二个开始匹配，因为后面有一个 _ 占位
+    Struct {e,..} = Struct {e:5};
+    assert_eq!([1,2,1,4,5],[a,b,c,d,e]);
+}
+```
+
+这里只是对之前绑定的变量进行了再赋值。
+
+### 变量与常量之间的差异
+
+变量和常量之间存在一些差异：
+
+- 常量不允许使用`mut`。**常量不仅仅默认不可变，而且自始至终 不可变**，因为常量在编译完成后，已经确定了它的值。
+- 常量使用`const`关键字而不是`let`声明。
+
+Rust常量命名规则是**字母全部大写，并且使用下划线分隔单词，对于数字字面量，可以使用下划线提高可读性。**
+
+```rust
+const MAX_POINTS: u32 = 100_000;
+```
+
+常量可以在任意作用域内声明，包括全局作用域，**在声明的作用域中，常量在`程序运行`的整个过程中都有效**
+
+### 变量遮蔽(shadowing)
+
+Rust允许声明相同的变量名，在后面声明的变量会遮蔽掉前面声明的。（前提在作用域允许范围内有效）。
+
+```rust
+fn main(){
+    let x = 5;
+    let x = x + 1;
+    {
+        let x = x * 2;
+        println!("{}",x);
+    }
+    println!("{}",x);
+}
+```
+
+这和`mut`变量的使用是不同的，第二个`let`生成了完全不同的新变量，两个变量只是刚好名字相同，**涉及到一次内存对象的再分配**，而`mut`声明的变量，可以**修改同一内存地址的值**，并不会发生内存对象的再分配，性能要更好。
+
+变量遮蔽的用处在于，如果你在某个作用域内无需再使用之前的变量（在被遮蔽后，无法再访问到之前的同名变量），就可以重复的使用变量名字。
+
+**这里就可以避免mut的不能改变变量类型(因为是重新生成对象)**
+
+`usize`是一种与CPU相关的整数类型。
+
+### 课后练习
+
+1. 变量只能在被初始化后才能使用
+
+2. 新创建的变量无法使用+=
+
+   ```rust
+   fn main() {
+       let x = 1;
+       let x += 2; //错误的
+       
+       println!("x = {}", x); 
+   }
+   ```
+
+3. 作用域是一个变量能保持合法的范围
+
+4. 修复错误
+
+   ```rust
+   // 修复错误
+   fn main() {
+       println!("{}, world", x); 
+   }
+   
+   fn define_x() {
+       let x = "hello";
+   }
+   ```
+
+   修改后：
+
+   ```rust
+   fn main(){
+       println!("{},world",define_x());
+   }
+   //"hello"是一个静态字符串，即&str类型，函数要求返回String,所以需要先使用to_string方法
+   fn define_x() -> String(){
+       let x = "hello".to_string();
+       x
+   }
+   //另外一种方法
+   fn define_x()->&'static str {
+       let x = "hello";
+       x
+   }
+   ```
+
+   (1){:?}是实现Debug Trait后的打印格式，比一般的打印信息更丰富。
+
+   (2)&'static str是Rust的另一个特性生命周期的产物，'static代表全局生命周期。
+
+## 基本类型
+
+Rust的每个值都有确定的数据类型，总的来说分为两类：基本类型和复合类型。**基本类型往往是一个最小化原子类型，无法解构为其它类型，由以下组成：**
+
+- 数值类型：有符号整数(`i8,i16,i32,i64,isize`)
