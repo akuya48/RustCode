@@ -475,7 +475,7 @@ for i in 'a'..='z'{
 }
 ```
 
-## 有理数和复数
+### 有理数和复数
 
 并未在标准库中，还包括如下：
 
@@ -788,4 +788,285 @@ fn main() {
     println!("The person's age from person struct is {}", person.age);
 }
 ```
+
+### 引用与借用
+
+**引用的作用域从创建开始，到它最后一次使用的地方。而不是变量的花括号。对于这种编译器优化行为，Rust叫：Non-Lexical Lifetimes(NLL)**
+
+Rust通过`借用(Borrowing)`使用某个变量的指针或者引用，**获取变量的引用，称之为借用**。
+
+常规引用是一个**指针类型**，指向了对象存储的内存地址，与C一样的使用方式（使用\*进行解引用）;
+
+```rust
+fn main(){
+    let x = 5;
+    let y = &x;
+    //*y使用这个值
+}
+```
+
+**不允许比较整数与引用，因为是不同的类型**
+
+在使用时，编译器会自动进行解引用，所以有时可以不加\*
+
+#### 不可变引用
+
+`&`符号就是引用，**允许你使用值，但是不能获取所有权，即不能对其内容进行更改。**
+
+```rust
+fn main() {
+    let s = String::from("hello");
+    change(&s);
+}
+fn change(some_string: &String) {
+    some_string.push_str(", world");
+}
+```
+
+#### 可变引用
+
+```rust
+fn main(){
+    let mut s = String::from("hello");
+    change(&mut s);
+}
+fn change(s:&mut String){
+    s.push_str(",world");
+}
+```
+
+首先声明`s`是可变类型，其次**创建一个`可变的引用` &mut s和`接受可变引用参数`s: &mut String**
+
+**同一作用域，特定数据只能有一个可变引用（重点是可变引用）**
+
+```rust
+fn main() {
+    let mut s = String::from("hello");
+    let r1 = &mut s;
+    let r2 = &mut s;
+    println!("{}, {}", r1, r2);
+}
+```
+
+**会报错**
+
+这段代码出错的原因在于，第一个可变借用`r1`必须要持续到最后一次使用的位置println!，**在`r1`创建和最后一次使用之间，尝试创建第二个可变借用`r2`。**
+
+```rust
+fn main(){
+    let mut y = String::from("kill");
+    let z = &mut y;
+    println!("{}",z);
+    let u = &mut y;
+    println!("{}",u);
+}
+```
+
+**不会报错**
+
+这个特性即是：`borrow checker`特性。好处是Rust在编译器就避免了数据竞争。
+
+数据竞争可由以下行为造成：
+
+- 两个或更多的指针同时访问同一数据
+- 至少有一个指针被用来写入数据
+- 没有同步数据访问的机制
+
+可以通过**手动限制变量**的作用域避免这个问题
+
+```rust
+
+fn main() {
+let mut s = String::from("hello");
+    {
+        let r1 = &mut s;
+    } // r1 在这里离开了作用域，所以我们完全可以创建一个新的引用
+    let r2 = &mut s;
+}
+```
+
+#### 可变引用与不可变引用不能同时存在
+
+```rust
+let mut s = String::from("hello");
+let r1 = &s; // 没问题
+let r2 = &s; // 没问题
+let r3 = &mut s; // 大问题
+println!("{}, {}, and {}", r1, r2, r3);
+```
+
+会出现："无法借用可变`s`，因为它已经被借用了不可变"
+
+理解：正在借用不可变引用的用户，肯定不希望他借用的东西，被另外一个人莫名其妙改变了。**而多个不可变引用被允许，是因为没有人能修改数据，数据不会被污染。**
+
+#### 悬垂引用
+
+也叫做悬垂指针，意思是：**指针指向某个值后，这个值被释放了，而指针仍然存在，其指向的内存可能不存在任何值或者已被其他变量重新使用。**
+
+**Rust中编译器可以确保引用永远不会变为悬垂状态：当你获取数据的引用后，编译器可以确保数据不会在引用结束前被释放，想要释放数据，必须先停止其引用。**
+
+```rust
+fn main() {
+    let reference_to_nothing = dangle();
+}
+fn dangle() -> &String {
+    let s = String::from("hello");
+    &s
+}
+```
+
+错误：this function's return type contains a borrowed value, but there is no value for it to be borrowed from. 该函数返回了一个借用的值，但是已经找不到它所借用值的来源
+
+可以直接返回s，**这样所有权将被移动给接收者！**
+
+```rust
+fn no_dangle() -> String {
+    let s = String::from("hello");
+    s
+}
+```
+
+**使用{:p}可以输出引用指向的地址。**
+
+**ref与&类似，但是其使用规则不同，ref是用于指定接收变量，这时就可以不使用&，也可以代表是一个引用。**
+
+```rust
+
+fn main() {
+    let c = '中';
+    let r1 = &c;
+    // 填写空白处，但是不要修改其它行的代码
+    let ref r2 = c;
+
+    assert_eq!(*r1, *r2);
+    
+    // 判断两个内存地址的字符串是否相等
+    assert_eq!(get_addr(r1),get_addr(r2));
+}
+// 获取传入引用的内存地址的字符串形式
+fn get_addr(r: &char) -> String {
+    format!("{:p}", r)
+}
+```
+
+错误: 从不可变对象借用可变
+
+```rust
+fn main() {
+    // 通过修改下面一行代码来修复错误
+    let s = String::from("hello, ");
+    borrow_object(&mut s)
+}
+fn borrow_object(s: &mut String) {}
+
+```
+
+正确：从可变对象借用不可变
+
+```rust
+// 下面的代码没有任何错误
+fn main() {
+    let mut s = String::from("hello, ");
+
+    borrow_object(&s);
+    
+    s.push_str("world");
+}
+
+fn borrow_object(s: &String) {}
+```
+
+## 复合类型
+
+### 字符串与切片
+
+String 与 &\'str是没办法直接相互传递的，必须使用对应的方法才能进行传递。
+
+例：
+
+```rust
+fn main() {
+  let my_name = "Pascal";
+  greet(my_name);
+}
+fn greet(name: String) {
+  println!("Hello, {}!", name);
+}
+```
+
+**会报错**
+
+#### 切片
+
+允许引用集合中部分连续的元素序列。
+
+对于字符串而言，切片就是对`String`类型中某一部分的引用。
+
+```rust
+fn main(){
+    let s = String::from("hello,world");
+    let hello = &s[0..5];
+    let world = &s[6..11];
+}
+```
+
+这就是创建切片的语法，使用方括号包括的一个序列：\[开始索引..终止索引\]，其中长度是`终止索引`-`开始索引`，元素包括终止索引-1，不包括终止索引所在的位置。**这里的切片基本单位是字节，而不是内部的元素**
+
+可以直接使用`&s[4..]`，这样就会从4一直到最后一个字节。
+
+`let slice = &s[..]`，全部切片。
+
+**在对字符串使用切片语法时需要格外小心，切片的索引必须落在字符之间的边界位置，也就是UTF-8字符的边界，例如，中文在UTF-8中占用3个字节，下面的代码就会崩溃：**
+
+```rust
+let s = String::from("中国人");
+let a = &s[0..2];
+println!("{}",a);
+```
+
+这里只取了`s`字符串的前两个字节，但是连`中`都无法完整。
+
+**字符串切片的类型是`&str`**
+
+例如：
+
+```rust
+fn main() {
+    let mut s = String::from("hello world");
+    let word = first_word(&s);
+    s.clear(); // error!
+    println!("the first word is: {}", word);
+}
+fn first_word(s: &String) -> &str {
+    &s[..1]
+}
+```
+
+**会报错，因为不能同时存在可变借用和不可变借用，s.clear()的作用是清除当前String中的所有内容，需要传入s的可变引用。在s.clear()处，可变借用和不可变借用同时生效。**
+
+
+
+其它集合类型也可以使用切片，例如数组：
+
+```rust
+let a = [1,2,3,4,5];
+let b = &a[0..3];
+assert_eq!(b,&[1,2,3]);
+```
+
+返回的类型是`&[i32]`，工作方式是相同的。
+
+#### 字符串字面量是切片
+
+```rust
+let s = "Hello,world!";
+```
+
+实际上，`s`的类型是`&str`，因此可以这样声明：
+
+```rust
+let s:&str = "Hello,world!";
+```
+
+这也是为什么字符串字面量是不可变的，因为`&str`是一个不可变引用。
 
