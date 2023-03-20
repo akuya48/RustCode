@@ -198,7 +198,7 @@ fn main(){
 上面代码中，值得注意的`Rust`特性：
 
 - Rust没有继承，因此Rust不是传统意义上的面向对象语言，但是它却有方法的使用，比如`record.trim()`和`record.split(',')`
-- 高阶函数变成：函数作为参数也能作为返回值，例如`.map(|field| field.trim())`，这里的`map`方法使用闭包函数作为参数(也叫做匿名函数，lambda函数)
+- 高阶函数编程：函数作为参数也能作为返回值，例如`.map(|field| field.trim())`，这里的`map`方法使用闭包函数作为参数(也叫做匿名函数，lambda函数)
 - 类型标注：通过::\<f32\>的使用，告诉编译器length是一个f32类型的浮点数。
 - 条件编译：if cfg!(debug_assertions)，说明后面的内容只在debug模式下生效
 - 隐式返回：Rust提供了`return`关键字用于函数返回，但是在很多时候，可以省略它，因为Rust是基于表达式的语言。
@@ -296,7 +296,7 @@ fn main(){
 
 变量和常量之间存在一些差异：
 
-- 常量不允许使用`mut`。**常量不仅仅默认不可变，而且自始至终 不可变**，因为常量在编译完成后，已经确定了它的值。
+- 常量不允许使用`mut`。**常量不仅仅默认不可变，而且自始至终不可变**，因为常量在编译完成后，已经确定了它的值。
 - 常量使用`const`关键字而不是`let`声明。
 
 Rust常量命名规则是**字母全部大写，并且使用下划线分隔单词，对于数字字面量，可以使用下划线提高可读性。**
@@ -424,7 +424,7 @@ Rust 整型默认使用 `i32`。
 
 要显式处理可能的溢出，可以使用标准库针对原始数字类型提供的这些方法：
 
-- 使用 `wrapping_*` 方法在所有模式下都按照补码循环溢出规则处理，例如 `wrapping_add`
+- 使用 `wrapping_*` 方法在所有模式下都按照补码循环溢出规则处理，例如`wrapping_add`
 - 如果使用 `checked_*` 方法时发生溢出，则返回 `None` 值
 - 使用 `overflowing_*` 方法返回该值(补码循环溢出)和一个指示是否存在溢出的布尔值
 - 使用 `saturating_*` 方法使值达到最小值或最大值
@@ -490,4 +490,302 @@ for i in 'a'..='z'{
 1. 在 `Cargo.toml` 中的 `[dependencies]` 下添加一行 `num = "0.4.0"`
 2. 使用`use num::complex::Complex`引入Complex包
 3. 运行cargo run
+
+## 所有权和借用
+
+在以往，内存安全几乎都是通过GC的方式实现，但是GC会引来性能、内存占用以及Stop the world等问题，在高性能和系统编程上是不可接受的，因此Rust采用了新的方式：**所有权系统**
+
+三种流派：
+
+- **垃圾回收机制(GC)**，在程序运行时不断寻找不再使用的内存，典型代表：Java、Go
+- **手动管理内存的分配和释放**, 在程序中，通过函数调用的方式来申请和释放内存，典型代表：C++
+- **通过所有权来管理内存**，编译器在编译时会根据一系列规则进行检查
+
+**这种检查只发生在编译期，因此对于程序运行期，不会有任何性能的损失。**
+
+接下来，将从`字符串`来引导所有权的相关知识。
+
+### 堆(heap)和栈(stack)
+
+栈和堆的核心目标就是为程序在运行时提供可供使用的内存空间。
+
+栈中的**所有数据都必须占用已知且固定大小的内存空间**，假设数据大小是未知的，那么在取出数据时，你将无法取到你想要的数据。
+
+**对于大小未知或者可能变化的数据，我们需要将它存储在堆上。**
+
+当向堆上放入数据时，需要请求一定大小的内存空间。操作系统在堆的某处找到一块足够大的空位，把它标记为已使用，并返回一个表示该位置地址的**指针**, 该过程被称为**在堆上分配内存。**接着**该指针将被推入到栈中，之后使用这个指针来访问数据在堆上的实际地址，进而访问该数据。**
+
+性能区别：
+
+1. 写入
+
+   入栈要比在堆上分配内存要快，因为入栈时操作系统无需分配新的空间，只需要将新数据放入栈顶即可。而堆则需操作系统寻找连续的内存空间。
+
+2. 读取
+
+   栈数据往往可以直接存储在CPU高速缓存中，而堆数据只能存储在内存中。
+
+   访问堆上的数据比访问栈上的数据慢，因为必须先访问栈再通过栈上的指针来访问内存。
+
+所有权与堆栈：
+
+当代码调用函数时，传递给函数的参数（包括可能指向堆上数据的指针和局部变量）依次压入栈中，当函数调用结束时，这些值将被从栈中按照相反的顺序依次移除。
+
+因为堆上的数据缺乏组织，**因此跟踪这些数据何时分配和释放是非常重要的**，否则堆上的数据将产生**内存泄漏** —— **这些数据将永远无法被回收。**
+
+### 所有权原则
+
+**关于所有权的规则：**
+
+1. Rust中每个值都被一个变量所拥有，该变量被成为值的所有者；
+2. 一个值只能被一个变量所拥有，或者一个值只能拥有一个所有者；
+3. **当所有者(变量)离开作用域范围内时，这个值将被丢弃(drop)**
+
+```rust
+let s = "hello";
+```
+
+这里的`s`时被**硬编码**进程序里的字符串值(类型为`&str`，也叫其字符串字面量)，它不适用于所有场景：
+
+- **字符串字面量时不可变的**，因此被硬编码到程序代码中；
+- 并非**所有字符串的值都能在编写代码时得知**
+
+为此，Rust提供了动态字符串类型`String`，该类型被分配到堆上，因此可以动态伸缩，也就能存储在编译时大小未知的文本。
+
+可以使用下面的方法基于字符串字面量来创建String类型：
+
+```rust
+let s = String::from("hello");
+```
+
+`::`是一种调用操作符，这里表示调用`String`中的`from`方法。
+
+可以修改String类型
+
+```rust
+
+#![allow(unused)]
+fn main() {
+let mut s = String::from("hello");
+
+s.push_str(", world!"); // push_str() 在字符串后追加字面值
+
+println!("{}", s); // 将打印 `hello, world!`
+}
+```
+
+### 变量绑定背后的数据交互
+
+```rust
+fn main() {
+    let x = 5;
+    let y = x;
+}
+```
+
+背后的逻辑：将`5`绑定到变量`x`；接着拷贝`x`的值赋给`y`，最终`x`和`y`都等于`5`。这两个都是通过自动拷贝的方式来赋值，都被存在栈中，无需在堆上分配内存。（拷贝非常快，这个速度远比在堆上创建内存来的多）
+
+```rust
+fn main() {
+    let s1 = String::from("hello");
+    let s2 = s1;
+}
+```
+
+这里的`String`是堆上的，不能自动拷贝。实际上`String`类型是一个复杂类型，由**存储在栈中的堆指针、字符串长度、字符串容量共同组成**，因此**堆指针**是最重要的。容量是堆内存分配空间的大小，长度是目前已经使用的大小。
+
+Rust解决二次释放和深拷贝带来的影响的方法就是转移所有权：**当 `s1` 赋予 `s2` 后，Rust 认为 `s1` 不再有效，因此也无需在 `s1` 离开作用域后 `drop` 任何东西，这就是把所有权从 `s1` 转移给了 `s2`，`s1` 在被赋予 `s2` 后就马上失效了**。
+
+例如：
+
+```rust
+let s1 = String::from("hello");
+let s2 = s1;
+
+println!("{}, world!", s1);
+```
+
+由于 Rust 禁止你使用无效的引用，你会看到以下的错误：
+
+```shell
+error[E0382]: use of moved value: `s1`
+ --> src/main.rs:5:28
+  |
+3 |     let s2 = s1;
+  |         -- value moved here
+4 |
+5 |     println!("{}, world!", s1);
+  |                            ^^ value used here after move
+  |
+  = note: move occurs because `s1` has type `std::string::String`, which does
+  not implement the `Copy` trait
+```
+
+拷贝指针、长度和容量而不拷贝数据听起来就像浅拷贝，但是又因为 Rust 同时使第一个变量 `s1` 无效了，因此这个操作被称为 **移动(move)**，而不是浅拷贝。
+
+再看一段代码：
+
+```rust
+fn main() {
+    let x: &str = "hello, world";
+    let y = x;
+    println!("{},{}",x,y);
+}
+```
+
+这段代码和之前的 `String` 有一个本质上的区别：在 `String` 的例子中 `s1` 持有了通过`String::from("hello")` 创建的值的所有权，而这个例子中，**`x` 只是引用了存储在二进制中的字符串 `"hello, world"`，并没有持有所有权。**
+
+因此 `let y = x` 中，仅仅是对该引用进行了拷贝，此时 `y` 和 `x` 都引用了同一个字符串。
+
+**Rust永远不会自动创建数据的“深拷贝”，因此，任何自动的复制都不是深拷贝，运行时性能影响较小。可以使用`clone`的方法深度拷贝**
+
+1. 深拷贝
+
+   ```Rust
+   fn main() {
+       let s1 = String::from("hello");
+       let s2 = s1.clone();
+       println!("s1 = {}, s2 = {}", s1, s2);
+   }
+   ```
+
+2. 浅拷贝
+
+   ```rust
+   fn main() {
+       let x = 5;
+       let y = x;
+       println!("x = {}, y = {}", x, y);
+   }
+   ```
+
+   这种没有报所有权的错误。原因是像**整型这样的基本类型在编译时是已知大小的**，会被存储在栈上，所以拷贝其实际的值是快速的。**这意味着没有理由在创建变量 `y` 后使 `x` 无效（`x`、`y` 都仍然有效）。**
+
+**Rust有一个叫做`Copy`的特征，可以用在类似于整形这样在栈中存储的类型，如果一个类型拥有`Copy`特征，那么旧的变量在赋值给其它变量后仍然可用。**
+
+**任何基本类型的组合可以 `Copy` ，不需要分配内存或某种形式资源的类型是可以 `Copy` 的**。如下是一些 `Copy` 的类型：
+
+- 所有整数类型，比如 `u32`
+- 布尔类型，`bool`，它的值是 `true` 和 `false`
+- 所有浮点数类型，比如 `f64`
+- 字符类型，`char`
+- **元组，**当且仅当其**包含的类型也都是 `Copy` 的时候**。比如，`(i32, i32)` 是 `Copy` 的，但 `(i32, String)` 就不是
+- 不可变引用 `&T` ，例如[转移所有权](https://course.rs/basic/ownership/ownership.html#转移所有权)中的最后一个例子，**但是注意: 可变引用 `&mut T` 是不可以 Copy的**
+
+### 函数传值与返回
+
+**将值传递给函数，一样会发生 `移动` 或者 `复制`，就跟 `let` 语句一样**
+
+```rust
+fn main() {
+    let s = String::from("hello");  // s 进入作用域
+
+    takes_ownership(s);             // s 的值移动到函数里 ...
+                                    // ... 所以到这里不再有效,这里无法使用s字符串了
+
+    let x = 5;                      // x 进入作用域
+
+    makes_copy(x);                  // x 应该移动函数里，
+                                    // 但 i32 是 Copy 的，所以在后面可继续使用 x
+
+} // 这里, x 先移出了作用域，然后是 s。但因为 s 的值已被移走，
+  // 所以不会有特殊操作
+
+fn takes_ownership(some_string: String) { // some_string 进入作用域
+    println!("{}", some_string);
+} // 这里，some_string 移出作用域并调用 `drop` 方法。占用的内存被释放
+
+fn makes_copy(some_integer: i32) { // some_integer 进入作用域
+    println!("{}", some_integer);
+} // 这里，some_integer 移出作用域。不会有特殊操作
+```
+
+同样的，函数返回值也有所有权，例如:
+
+```Rust
+fn main() {
+    let s1 = gives_ownership();         // gives_ownership 将返回值
+                                        // 移给 s1
+
+    let s2 = String::from("hello");     // s2 进入作用域
+
+    let s3 = takes_and_gives_back(s2);  // s2 被移动到
+                                        // takes_and_gives_back 中,
+                                        // 它也将返回值移给 s3
+} // 这里, s3 移出作用域并被丢弃。s2 也移出作用域，但已被移走，
+  // 所以什么也不会发生。s1 移出作用域并被丢弃
+
+fn gives_ownership() -> String {             // gives_ownership 将返回值移动给
+                                             // 调用它的函数
+
+    let some_string = String::from("hello"); // some_string 进入作用域.
+
+    some_string                              // 返回 some_string 并移出给调用的函数
+}
+
+// takes_and_gives_back 将传入字符串并返回该值
+fn takes_and_gives_back(a_string: String) -> String { // a_string 进入作用域
+
+    a_string  // 返回 a_string 并移出给调用的函数
+}
+```
+
+**当所有权转移时，可变性也可以随之改变**
+
+```rust
+fn main() {
+    let s = String::from("hello, ");
+    let mut s1 = s;//原有的s是不可修改的，这里增加了mut之后可以修改
+
+    s1.push_str("world")
+}
+```
+
+```rust
+fn main() {
+    let x = Box::new(5);
+    // println!("{}",x);
+    // let ...      // 完成该行代码，不要修改其它行！
+    let mut y = x.clone();
+    *y = 4;
+    
+    assert_eq!(*x, 5);
+}
+```
+
+### 部分 move
+
+当解构一个变量时，可以同时使用 `move` 和**引用模式(即栈中的浅拷贝)**绑定的方式。当这么做时，`部分move`就会发生：变量中一部分的所有权被转移给其它变量，而另一部分我们获取了它的引用。
+
+在这种情况下，原变量将无法再被使用，但是它没有转移所有权的那一部分依然可以使用，也就是之前被引用的那部分。
+
+```rust
+
+fn main() {
+    #[derive(Debug)]
+    struct Person {
+        name: String,
+        age: Box<u8>,
+    }
+
+    let person = Person {
+        name: String::from("Alice"),
+        age: Box::new(20),
+    };
+
+    // 通过这种解构式模式匹配，person.name 的所有权被转移给新的变量 `name`
+    // 但是，这里 `age` 变量却是对 person.age 的引用, 这里 ref 的使用相当于: let age = &person.age 
+    let Person { name, ref age } = person;
+
+    println!("The person's age is {}", age);
+
+    println!("The person's name is {}", name);
+
+    // Error! 原因是 person 的一部分已经被转移了所有权，因此我们无法再使用它
+    //println!("The person struct is {:?}", person);
+
+    // 虽然 `person` 作为一个整体无法再被使用，但是 `person.age` 依然可以使用
+    println!("The person's age from person struct is {}", person.age);
+}
+```
 
