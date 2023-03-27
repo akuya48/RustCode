@@ -2994,4 +2994,3 @@ fn main() {
 可以通过as_mut_ptr()获得当前String类型指向堆数组的指针，通过len()获得字符串的长度，通过capacity()获得当前的容量。
 
 通过from_raw_parts(ptr,len,capacity)可以通过指针，长度，容量重构String类型。
-
